@@ -9,11 +9,11 @@ import TwitterFuture.futureInstance
 
 object Wiring {
 
-  def go(hostAndPort: String, path: String, apiKey: String) = {
+  def go(hostAndPort: String, path: String, sampleTimeSeconds: Int, apiKey: String) = {
     (for {
       streamUrl <- optionT[Future](getPlaylist(hostAndPort, path).map(getPlaylistFeed))
       stream <- streamData(streamUrl).liftM[OptionT]
-      outputFile <- writeStreamData(stream, 370000).liftM[OptionT]
+      outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[OptionT]
       fingerprintJson <- optionT[Future](getFingerprintJson(outputFile))
       fingerprint <- optionT[Future](Future.value(getFingerprint(fingerprintJson)))
       song <- optionT[Future](requestSong(fingerprint, apiKey))
@@ -21,3 +21,4 @@ object Wiring {
   }
 
 }
+
