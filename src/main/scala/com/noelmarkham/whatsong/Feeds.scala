@@ -12,6 +12,7 @@ import org.apache.commons.io.IOUtils
 import argonaut._
 import Argonaut._
 import java.nio.charset.Charset
+import java.net.URL
 
 case class Song(title: String, artist: String) {
   def describe = s"$title by $artist"
@@ -34,13 +35,10 @@ object Feeds {
   }
 
   def streamData(streamUrl: String): Future[InputStream] = {
-    val host = streamUrl.drop("http://".length).takeWhile(_ != '/')
-    val client: Service[HttpRequest, HttpResponse] = Http.newService(host + ":80")
-
-    val request = RequestBuilder().url(streamUrl).buildGet
-
-    client(request).map {httpResponse =>
-      new ChannelBufferInputStream(httpResponse.getContent)
+    Future {
+      val url = new URL(streamUrl)
+      val conn = url.openConnection()
+      conn.getInputStream
     }
   }
 
@@ -52,6 +50,7 @@ object Feeds {
 
       IOUtils.copyLarge(stream, fos, 0, size)
       fos.close
+      stream.close
       file
     }
   }
