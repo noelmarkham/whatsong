@@ -4,7 +4,7 @@ import scalaz._
 import Scalaz._
 import com.twitter.util.Future
 
-object TwitterFuture {
+object Implicits {
 
   private[this] case class F() extends Monad[Future] {
     def point[A](a: => A): Future[A] = Future(a)
