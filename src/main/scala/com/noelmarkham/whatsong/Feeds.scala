@@ -14,7 +14,7 @@ import Argonaut._
 import java.nio.charset.Charset
 import java.net.URL
 
-case class Song(title: String, artist: String) {
+case class Song(id: String, title: String, artist: String) {
   def describe = s"$title by $artist"
 }
 
@@ -90,10 +90,11 @@ object Feeds {
       val responseString = httpResponse.getContent.toString(Charset.forName("UTF-8"))
       val possibleJson = Parse.parseOption(responseString)
       possibleJson.flatMap { json =>
+        val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
         val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
         val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
 
-        (titleLens.get(json) |@| artistLens.get(json)){Song(_, _)}
+        (idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song(_, _, _) }
       }
     }
   }
