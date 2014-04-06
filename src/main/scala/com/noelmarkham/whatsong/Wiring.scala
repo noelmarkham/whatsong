@@ -38,22 +38,33 @@ object Wiring {
   }
 
   def runContinually(hostAndPort: String, path: String, sampleTimeSeconds: Int, apiKey: String): Unit = {
-    @tailrec
-    def run(prevSong: Option[Song]): Unit = {
-      val songs = Await.result(getSong(hostAndPort, path, sampleTimeSeconds, apiKey))
 
-      (prevSong, songs) match {
-        case (p, None) => run(p)
-        case (p, Some((None, None))) => run(p)
-        case (p, Some((o1, o2))) if o1 =/= o2 => run(p)
-        case (p, Some((o1 @ Some(s1), o2 @ Some(s2)))) if s1 === s2 && (p === o1) => run(p)
-        case (p, Some((o1 @ Some(s1), o2 @ Some(s2)))) if s1 === s2 && (p =/= o1) => {
-          println(s"${new Date()}: ${s2.describe}")
-          run(o2)
+    @tailrec
+    def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song])): Unit = {
+
+      val possibleSongs = Await.result(getSong(hostAndPort, path, sampleTimeSeconds, apiKey))
+
+      possibleSongs match {
+        case None => matches(prevSong, prevMatches)
+        case Some((s1, s2)) => {
+          val (p1, p2) = prevMatches
+          val goodMatches = List(p1, p2, s1, s2).foldMap[Map[Song, Int]]{o =>
+            o.foldMap(s => Map(s -> 1))
+          }.filter{case (_, v) => v > 1}.map{case (k, _) => k}.toList
+
+          (goodMatches.length, goodMatches.headOption) match {
+            case (1, o @ Some(s)) if prevSong === o => matches(prevSong, (s1, s2))
+            case (1, o @ Some(s)) => {
+              println(s"${new Date()}: ${s.describe}")
+              matches(o, (s1, s2))
+            }
+            case _ => matches(prevSong, (s1, s2))
+          }
         }
       }
     }
-    run(None)
+
+    matches(None, (None, None))
   }
 }
 
