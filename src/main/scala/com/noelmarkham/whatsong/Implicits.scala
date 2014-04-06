@@ -3,6 +3,7 @@ package com.noelmarkham.whatsong
 import scalaz._
 import Scalaz._
 import com.twitter.util.Future
+import com.twitter.util.Future
 
 object Implicits {
 

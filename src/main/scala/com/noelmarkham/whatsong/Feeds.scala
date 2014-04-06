@@ -2,6 +2,7 @@ package com.noelmarkham.whatsong
 
 import scalaz._
 import Scalaz._
+import Kleisli._
 import com.twitter.finagle.{Http, Service}
 import com.twitter.finagle.http.RequestBuilder
 import com.twitter.util.Future
@@ -55,14 +56,13 @@ object Feeds {
     }
   }
 
-  def getFingerprintJson(streamData: File): Future[Option[Json]] = {
+  def getFingerprintJson(fingerprintApplication: String, streamData: File): Future[Option[Json]] = {
     Future {
       import scala.sys.process._
       val filename = streamData.getAbsolutePath
-      val process = Process(s"/usr/local/bin/echoprint-codegen $filename")
+      val process = Process(s"$fingerprintApplication $filename")
 
       val output = process.!!
-      streamData.delete()
       Parse.parseOption(output)
     }
   }
@@ -72,12 +72,12 @@ object Feeds {
     codeLens.get(json)
   }
 
-  def requestSong(code: String, apiKey: String): Future[Option[Song]] = {
+  def requestSong(code: String, apiVersion: String, apiKey: String): Future[Option[Song]] = {
     val client: Service[HttpRequest, HttpResponse] = Http.newService("developer.echonest.com:80")
 
     val requestParameters = Map(
       "api_key" -> apiKey,
-      "version" -> "4.12",
+      "version" -> apiVersion,
       "code" -> code
     ).toList.map{
       case (k, v) => s"$k=$v"
