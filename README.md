@@ -14,3 +14,4 @@ Plenty to do:
   * Big one: re-implement Echoprint rather than calling an external application
   * This application feels like it could work well with Scalaz-stream
   * The requests using Finagle doesn't feel right
+  * Rewrite it in Haskell :)
