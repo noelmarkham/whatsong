@@ -2,12 +2,10 @@ package com.noelmarkham.whatsong
 
 import scalaz._
 import Scalaz._
-import Kleisli._
 import com.twitter.finagle.{Http, Service}
 import com.twitter.finagle.http.RequestBuilder
 import com.twitter.util.Future
 import org.jboss.netty.handler.codec.http._
-import org.jboss.netty.buffer._
 import java.io._
 import org.apache.commons.io.IOUtils
 import argonaut._
@@ -29,8 +27,13 @@ object Feeds {
     }
   }
 
-  def getPlaylistFeed(playlistData: String): Option[String] = {
-    playlistData.lines.filter(_.startsWith("File1=")).map(s => s.drop("File1=".length)).find(_ => true)
+  def getPlaylistFeed(playlistData: String): String \/ String = {
+    playlistData
+      .lines
+      .filter(_.startsWith("File1="))
+      .map(s => s.drop("File1=".length))
+      .find(_ => true)
+      .toRightDisjunction(s"Unable to find stream URL from playlist response: [$playlistData]")
   }
 
   def streamData(streamUrl: String): Future[InputStream] = {
@@ -54,20 +57,22 @@ object Feeds {
     }
   }
 
-  def getFingerprintJson(fingerprintApplication: String, streamData: File): Future[Option[Json]] = {
+  def getFingerprintJson(fingerprintApplication: String, streamData: File): Future[String \/ Json] = {
     Future {
       import scala.sys.process._
       val filename = streamData.getAbsolutePath
       val process = Process(s"$fingerprintApplication $filename")
 
       val output = process.!!
-      Parse.parseOption(output)
+      Parse.parse(output)
     }
   }
 
-  def getFingerprint(json: Json): Option[String] = {
+  def getFingerprint(json: Json): String \/ String = {
     val codeLens = jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("code") >=> jStringPL
-    codeLens.get(json)
+    codeLens
+      .get(json)
+      .toRightDisjunction(s"Cannot extract code from fingerprint application output: [$json]")
   }
 
   def requestSong(code: String, apiVersion: String, apiKey: String): Future[Option[Song]] = {

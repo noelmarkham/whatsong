@@ -5,7 +5,6 @@ A toy application to take a playlist URL, grab its streaming audio, and identify
 ## Todo
 
 Plenty to do:
-  * Use Scalaz `\/` with error reasons rather than `Option`
   * Refactor to use a `ReaderWriter` and provide some appropriate logging, as well as setting the environment
   * Have SBT build a proper application
   * Parse the Playlist response properly, rather than just looking at the first one

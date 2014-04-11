@@ -2,7 +2,9 @@ package com.noelmarkham.whatsong
 
 import scalaz._
 import Scalaz._
-import OptionT._
+import argonaut._
+import Argonaut._
+import EitherT._
 import Feeds._
 import com.twitter.util.{Await, Future}
 import Implicits.{futureInstance, equalSongInstance}
@@ -21,29 +23,31 @@ trait AudioStreamerConfig {
 
 object AudioStreamer {
 
-  def getSong(config: AudioStreamerConfig): Future[Option[(Option[Song], Option[Song])]] = {
+  type EitherTString[M[+_], A] = EitherT[M, String, A]
+
+  def getSong(config: AudioStreamerConfig): Future[String \/ (Option[Song], Option[Song])] = {
     import config._
     (for {
-      streamUrl <- optionT[Future](getPlaylist(hostAndPort, path).map(getPlaylistFeed))
-      stream <- streamData(streamUrl).liftM[OptionT]
-      outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[OptionT]
-      songOpts <- both(outputFile, apiKey, echoprintExecutable, enmfpExecutable).liftM[OptionT]
+      streamUrl <- eitherT[Future, String, String](getPlaylist(hostAndPort, path).map(getPlaylistFeed))
+      stream <- streamData(streamUrl).liftM[EitherTString]
+      outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[EitherTString]
+      songOpts <- both(outputFile, apiKey, echoprintExecutable, enmfpExecutable)
       _ = outputFile.delete()
     } yield songOpts).run
   }
 
-  private[this] def both(streamData: File, apiKey: String, echoprintExecutable: String, enmfpExecutable: String): Future[(Option[Song], Option[Song])] = {
-    val echoprintFO = fingerprint(echoprintExecutable, "4.12", streamData, apiKey)
-    val enmfpFO = fingerprint(enmfpExecutable, "3.15", streamData, apiKey)
+  private[this] def both(streamData: File, apiKey: String, echoprintExecutable: String, enmfpExecutable: String): EitherT[Future, String, (Option[Song], Option[Song])] = {
+    val echoprintSong = eitherT[Future, String, Option[Song]](fingerprint(echoprintExecutable, "4.12", streamData, apiKey))
+    val enmfpSong = eitherT[Future, String, Option[Song]](fingerprint(enmfpExecutable, "3.15", streamData, apiKey))
 
-    (echoprintFO |@| enmfpFO){(_, _)}
+    (echoprintSong |@| enmfpSong){(_, _)}
   }
 
-  private[this] def fingerprint(executable: String, apiVersion: String, streamData: File, apiKey: String): Future[Option[Song]] = {
+  private[this] def fingerprint(executable: String, apiVersion: String, streamData: File, apiKey: String): Future[String \/ Option[Song]] = {
     (for {
-      fingerprintJson <- optionT[Future](getFingerprintJson(executable, streamData))
-      fingerprint <- optionT[Future](Future.value(getFingerprint(fingerprintJson)))
-      song <- optionT[Future](requestSong(fingerprint, apiVersion, apiKey))
+      fingerprintJson <- eitherT[Future, String , Json](getFingerprintJson(executable, streamData))
+      fingerprint <- eitherT[Future, String, String](Future.value(getFingerprint(fingerprintJson)))
+      song <- requestSong(fingerprint, apiVersion, apiKey).liftM[EitherTString]
     } yield song).run
   }
 
@@ -55,16 +59,20 @@ object AudioStreamer {
       val possibleSongs = Await.result(getSong(config))
 
       possibleSongs match {
-        case None => matches(prevSong, prevMatches)
-        case Some((s1, s2)) => {
+        case -\/(errorString) => {
+          println(s"  Error: $errorString")
+          matches(prevSong, prevMatches)
+        }
+        case \/-((s1, s2)) => {
           val (p1, p2) = prevMatches
+
+          // If there is distinctly two or more matches from last 4 fingerprints, assume a match
           val goodMatches = List(p1, p2, s1, s2).foldMap[Map[Song, Int]]{o =>
             o.foldMap(s => Map(s -> 1))
           }.filter{case (_, v) => v > 1}.map{case (k, _) => k}.toList
 
           (goodMatches.length, goodMatches.headOption) match {
-            case (1, o @ Some(s)) if prevSong === o => matches(prevSong, (s1, s2))
-            case (1, o @ Some(s)) => {
+            case (1, o @ Some(s)) if prevSong =/= o => {
               println(s"${new Date()}: ${s.describe}")
               matches(o, (s1, s2))
             }
