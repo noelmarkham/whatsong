@@ -10,21 +10,31 @@ import scala.annotation.tailrec
 import java.util.Date
 import java.io.File
 
-object Wiring {
+trait AudioStreamerConfig {
+  def hostAndPort: String
+  def path: String
+  def sampleTimeSeconds: Int = 20
+  def apiKey: String
+  def echoprintExecutable: String
+  def enmfpExecutable: String
+}
 
-  def getSong(hostAndPort: String, path: String, sampleTimeSeconds: Int, apiKey: String): Future[Option[(Option[Song], Option[Song])]] = {
+object AudioStreamer {
+
+  def getSong(config: AudioStreamerConfig): Future[Option[(Option[Song], Option[Song])]] = {
+    import config._
     (for {
       streamUrl <- optionT[Future](getPlaylist(hostAndPort, path).map(getPlaylistFeed))
       stream <- streamData(streamUrl).liftM[OptionT]
       outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[OptionT]
-      songOpts <- both(outputFile, apiKey).liftM[OptionT]
+      songOpts <- both(outputFile, apiKey, echoprintExecutable, enmfpExecutable).liftM[OptionT]
       _ = outputFile.delete()
     } yield songOpts).run
   }
 
-  private[this] def both(streamData: File, apiKey: String): Future[(Option[Song], Option[Song])] = {
-    val echoprintFO = fingerprint("/usr/local/bin/echoprint-codegen", "4.12", streamData, apiKey)
-    val enmfpFO = fingerprint("/Users/noel.markham/Downloads/enmfp/ENMFP_codegen/codegen.Darwin", "3.15", streamData, apiKey)
+  private[this] def both(streamData: File, apiKey: String, echoprintExecutable: String, enmfpExecutable: String): Future[(Option[Song], Option[Song])] = {
+    val echoprintFO = fingerprint(echoprintExecutable, "4.12", streamData, apiKey)
+    val enmfpFO = fingerprint(enmfpExecutable, "3.15", streamData, apiKey)
 
     (echoprintFO |@| enmfpFO){(_, _)}
   }
@@ -37,12 +47,12 @@ object Wiring {
     } yield song).run
   }
 
-  def runContinually(hostAndPort: String, path: String, sampleTimeSeconds: Int, apiKey: String): Unit = {
+  def runContinually(config: AudioStreamerConfig): Unit = {
 
     @tailrec
     def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song])): Unit = {
 
-      val possibleSongs = Await.result(getSong(hostAndPort, path, sampleTimeSeconds, apiKey))
+      val possibleSongs = Await.result(getSong(config))
 
       possibleSongs match {
         case None => matches(prevSong, prevMatches)

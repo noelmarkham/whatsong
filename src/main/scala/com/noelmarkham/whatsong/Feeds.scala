@@ -23,11 +23,9 @@ object Feeds {
 
   def getPlaylist(host: String, path: String): Future[String] = {
     val client: Service[HttpRequest, HttpResponse] = Http.newService(host)
-
     val request = RequestBuilder().url(s"http://$host$path").buildGet
     client(request).map {httpResponse =>
-      val s = httpResponse.getContent.toString(Charset.forName("UTF-8"))
-      s
+      httpResponse.getContent.toString(Charset.forName("UTF-8"))
     }
   }
 

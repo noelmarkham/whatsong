@@ -12,3 +12,5 @@ libraryDependencies ++= Seq(
     "commons-io" % "commons-io" % "2.4",
     "io.argonaut" %% "argonaut" % "6.0.3"
 )
+
+initialCommands in console := """import com.twitter.util.Await; import com.noelmarkham.whatsong.AudioStreamer._"""
