@@ -54,14 +54,19 @@ object AudioStreamer {
   def runContinually(config: AudioStreamerConfig): Unit = {
 
     @tailrec
-    def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song])): Unit = {
+    def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song]), errorCount: Int = 10): Unit = {
 
       val possibleSongs = Await.result(getSong(config))
 
       possibleSongs match {
         case -\/(errorString) => {
           println(s"  Error: $errorString")
-          matches(prevSong, prevMatches)
+          if(errorCount < 1) {
+            println(s"Too many errors, exiting")
+            sys.exit(-1)
+          } else {
+            matches(prevSong, prevMatches, errorCount -1)
+          }
         }
         case \/-((s1, s2)) => {
           val (p1, p2) = prevMatches
