@@ -28,7 +28,8 @@ object AudioStreamer {
   def getSong(config: AudioStreamerConfig): Future[String \/ (Option[Song], Option[Song])] = {
     import config._
     (for {
-      streamUrl <- eitherT[Future, String, String](getPlaylist(hostAndPort, path).map(getPlaylistFeed))
+      playlists <- eitherT[Future, String, String](getPlaylist(hostAndPort, path))
+      streamUrl <- eitherT[Future, String, String](Future.value(getPlaylistFeed(playlists)))
       stream <- streamData(streamUrl).liftM[EitherTString]
       outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[EitherTString]
       songOpts <- both(outputFile, apiKey, echoprintExecutable, enmfpExecutable)
@@ -37,18 +38,18 @@ object AudioStreamer {
   }
 
   private[this] def both(streamData: File, apiKey: String, echoprintExecutable: String, enmfpExecutable: String): EitherT[Future, String, (Option[Song], Option[Song])] = {
-    val echoprintSong = eitherT[Future, String, Option[Song]](fingerprint(echoprintExecutable, "4.12", streamData, apiKey))
-    val enmfpSong = eitherT[Future, String, Option[Song]](fingerprint(enmfpExecutable, "3.15", streamData, apiKey))
+    val echoprintSong = fingerprint(echoprintExecutable, "4.12", streamData, apiKey)
+    val enmfpSong = fingerprint(enmfpExecutable, "3.15", streamData, apiKey)
 
     (echoprintSong |@| enmfpSong){(_, _)}
   }
 
-  private[this] def fingerprint(executable: String, apiVersion: String, streamData: File, apiKey: String): Future[String \/ Option[Song]] = {
-    (for {
+  private[this] def fingerprint(executable: String, apiVersion: String, streamData: File, apiKey: String): EitherT[Future, String, Option[Song]] = {
+    for {
       fingerprintJson <- eitherT[Future, String , Json](getFingerprintJson(executable, streamData))
       fingerprint <- eitherT[Future, String, String](Future.value(getFingerprint(fingerprintJson)))
-      song <- requestSong(fingerprint, apiVersion, apiKey).liftM[EitherTString]
-    } yield song).run
+      song <- eitherT[Future, String, Option[Song]](requestSong(fingerprint, apiVersion, apiKey))
+    } yield song
   }
 
   def runContinually(config: AudioStreamerConfig): Unit = {

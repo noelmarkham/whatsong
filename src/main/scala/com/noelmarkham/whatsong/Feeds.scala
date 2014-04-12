@@ -19,11 +19,13 @@ case class Song(id: String, title: String, artist: String) {
 
 object Feeds {
 
-  def getPlaylist(host: String, path: String): Future[String] = {
+  def getPlaylist(host: String, path: String): Future[String \/ String] = {
     val client: Service[HttpRequest, HttpResponse] = Http.newService(host)
     val request = RequestBuilder().url(s"http://$host$path").buildGet
     client(request).map {httpResponse =>
-      httpResponse.getContent.toString(Charset.forName("UTF-8"))
+      httpResponse.getContent.toString(Charset.forName("UTF-8")).right
+    }.rescue {
+      case t => Future.value(s"Exception getting playlist: [$t]".left)
     }
   }
 
@@ -75,7 +77,7 @@ object Feeds {
       .toRightDisjunction(s"Cannot extract code from fingerprint application output: [$json]")
   }
 
-  def requestSong(code: String, apiVersion: String, apiKey: String): Future[Option[Song]] = {
+  def requestSong(code: String, apiVersion: String, apiKey: String): Future[String \/ Option[Song]] = {
     val client: Service[HttpRequest, HttpResponse] = Http.newService("developer.echonest.com:80")
 
     val requestParameters = Map(
@@ -98,7 +100,9 @@ object Feeds {
         val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
 
         (idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song(_, _, _) }
-      }
+      }.right
+    }.rescue {
+      case t => Future.value(s"Exception requesting song: [$t]".left)
     }
   }
 }
