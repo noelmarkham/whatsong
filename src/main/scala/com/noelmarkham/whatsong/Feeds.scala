@@ -2,16 +2,18 @@ package com.noelmarkham.whatsong
 
 import scalaz._
 import Scalaz._
-import com.twitter.finagle.{Http, Service}
-import com.twitter.finagle.http.RequestBuilder
-import com.twitter.util.Future
-import org.jboss.netty.handler.codec.http._
 import java.io._
 import org.apache.commons.io.IOUtils
 import argonaut._
 import Argonaut._
-import java.nio.charset.Charset
 import java.net.URL
+import akka.io.IO
+import akka.pattern.ask
+import spray.can.Http
+import spray.http._
+import spray.client.pipelining._
+import scala.concurrent.Future
+import Implicits._
 
 case class Song(id: String, title: String, artist: String) {
   def describe = s"$title by $artist"
@@ -19,14 +21,12 @@ case class Song(id: String, title: String, artist: String) {
 
 object Feeds {
 
-  def getPlaylist(host: String, path: String): Future[String \/ String] = {
-    val client: Service[HttpRequest, HttpResponse] = Http.newService(host)
-    val request = RequestBuilder().url(s"http://$host$path").buildGet
-    client(request).map {httpResponse =>
-      httpResponse.getContent.toString(Charset.forName("UTF-8")).right
-    }.rescue {
-      case t => Future.value(s"Exception getting playlist: [$t]".left)
-    }
+  def getPlaylist(url: String): Future[String \/ String] = {
+
+    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
+    val response = pipeline(Get(url))
+
+    response.map{ _.entity.toOption.map { _.asString }.toRightDisjunction("Unable to retrieve playlist")}
   }
 
   def getPlaylistFeed(playlistData: String): String \/ String = {
@@ -78,31 +78,33 @@ object Feeds {
   }
 
   def requestSong(code: String, apiVersion: String, apiKey: String): Future[String \/ Option[Song]] = {
-    val client: Service[HttpRequest, HttpResponse] = Http.newService("developer.echonest.com:80")
 
     val requestParameters = Map(
       "api_key" -> apiKey,
       "version" -> apiVersion,
-      "code" -> code
+      "code"    -> code
     ).toList.map{
       case (k, v) => s"$k=$v"
     }.mkString("&")
 
     val requestString = s"http://developer.echonest.com:80/api/v4/song/identify?$requestParameters"
-    val request = RequestBuilder().url(requestString).buildGet
 
-    client(request).map{ httpResponse =>
-      val responseString = httpResponse.getContent.toString(Charset.forName("UTF-8"))
-      val possibleJson = Parse.parseOption(responseString)
-      possibleJson.flatMap { json =>
-        val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
-        val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
-        val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
+    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
 
-        (idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song(_, _, _) }
-      }.right
-    }.rescue {
-      case t => Future.value(s"Exception requesting song: [$t]".left)
+    val response: Future[HttpResponse] = pipeline(Get(requestString))
+
+    response.map { httpResponse =>
+      val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
+      val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
+      val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
+
+      for {
+        entity <- httpResponse.entity.toOption.toRightDisjunction("Unable to parse response")
+        json <- Parse.parse(entity.asString)
+        song <- ((idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song(_, _, _) }).right
+      } yield song
+    }.recover {
+      case t => "Exception requesting song: [$t]".left
     }
   }
 }

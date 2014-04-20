@@ -6,15 +6,16 @@ import argonaut._
 import Argonaut._
 import EitherT._
 import Feeds._
-import com.twitter.util.{Await, Future}
-import Implicits.{futureInstance, equalSongInstance}
+import Implicits._
 import scala.annotation.tailrec
 import java.util.Date
 import java.io.File
+import scala.concurrent.{Await, Future}
+import concurrent.duration.Duration
+import java.util.concurrent.TimeUnit
 
 trait AudioStreamerConfig {
-  def hostAndPort: String
-  def path: String
+  def url: String
   def sampleTimeSeconds: Int = 20
   def apiKey: String
   def echoprintExecutable: String
@@ -28,8 +29,8 @@ object AudioStreamer {
   def getSong(config: AudioStreamerConfig): Future[String \/ (Option[Song], Option[Song])] = {
     import config._
     (for {
-      playlists <- eitherT[Future, String, String](getPlaylist(hostAndPort, path))
-      streamUrl <- eitherT[Future, String, String](Future.value(getPlaylistFeed(playlists)))
+      playlists <- eitherT[Future, String, String](getPlaylist(url))
+      streamUrl <- eitherT[Future, String, String](Future.successful(getPlaylistFeed(playlists)))
       stream <- streamData(streamUrl).liftM[EitherTString]
       outputFile <- writeStreamData(stream, sampleTimeSeconds * 18500).liftM[EitherTString]
       songOpts <- both(outputFile, apiKey, echoprintExecutable, enmfpExecutable)
@@ -47,7 +48,7 @@ object AudioStreamer {
   private[this] def fingerprint(executable: String, apiVersion: String, streamData: File, apiKey: String): EitherT[Future, String, Option[Song]] = {
     for {
       fingerprintJson <- eitherT[Future, String , Json](getFingerprintJson(executable, streamData))
-      fingerprint <- eitherT[Future, String, String](Future.value(getFingerprint(fingerprintJson)))
+      fingerprint <- eitherT[Future, String, String](Future.successful(getFingerprint(fingerprintJson)))
       song <- eitherT[Future, String, Option[Song]](requestSong(fingerprint, apiVersion, apiKey))
     } yield song
   }
@@ -57,7 +58,12 @@ object AudioStreamer {
     @tailrec
     def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song]), errorCount: Int = 10): Unit = {
 
-      val possibleSongs = Await.result(getSong(config))
+      val possibleSongs = try {
+        Await.result(getSong(config), Duration(10, TimeUnit.MINUTES))
+      }
+      catch {
+        case _: Exception => (None, None).right
+      }
 
       possibleSongs match {
         case -\/(errorString) => {
