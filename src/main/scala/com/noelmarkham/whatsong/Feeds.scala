@@ -7,12 +7,9 @@ import org.apache.commons.io.IOUtils
 import argonaut._
 import Argonaut._
 import java.net.URL
-import akka.io.IO
-import akka.pattern.ask
-import spray.can.Http
-import spray.http._
-import spray.client.pipelining._
 import scala.concurrent.Future
+import dispatch._
+import Defaults._
 import Implicits._
 
 case class Song(id: String, title: String, artist: String) {
@@ -21,12 +18,12 @@ case class Song(id: String, title: String, artist: String) {
 
 object Feeds {
 
-  def getPlaylist(url: String): Future[String \/ String] = {
-
-    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
-    val response = pipeline(Get(url))
-
-    response.map{ _.entity.toOption.map { _.asString }.toRightDisjunction("Unable to retrieve playlist")}
+  def getPlaylist(endpoint: String): Future[String \/ String] = {
+    Http(url(endpoint) OK as.String).fold({ throwable =>
+      s"Unable to retrieve playlist: $throwable".left
+    }, { data =>
+      data.right
+    })
   }
 
   def getPlaylistFeed(playlistData: String): String \/ String = {
@@ -74,7 +71,7 @@ object Feeds {
     val codeLens = jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("code") >=> jStringPL
     codeLens
       .get(json)
-      .toRightDisjunction(s"Cannot extract code from fingerprint application output: [$json]")
+      .toRightDisjunction(s"Cannot extract code from fingerprint application output: $json")
   }
 
   def requestSong(code: String, apiVersion: String, apiKey: String): Future[String \/ Option[Song]] = {
@@ -89,22 +86,18 @@ object Feeds {
 
     val requestString = s"http://developer.echonest.com:80/api/v4/song/identify?$requestParameters"
 
-    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
+    import Lenses._
 
-    val response: Future[HttpResponse] = pipeline(Get(requestString))
-
-    response.map { httpResponse =>
-      val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
-      val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
-      val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
-
-      for {
-        entity <- httpResponse.entity.toOption.toRightDisjunction("Unable to parse response")
-        json <- Parse.parse(entity.asString)
-        song <- ((idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song(_, _, _) }).right
-      } yield song
-    }.recover {
-      case t => "Exception requesting song: [$t]".left
-    }
+    Http(url(requestString) OK as.String).fold({ throwable =>
+      s"Exception requesting song: [$throwable]".left
+    }, { data =>
+      Parse.parse(data).map { json => (idLens.get(json) |@| titleLens.get(json) |@| artistLens.get(json)) { Song.apply } }
+    })
   }
+}
+
+object Lenses {
+  val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
+  val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
+  val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
 }

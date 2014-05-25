@@ -1,15 +1,18 @@
-scalaVersion := "2.10.3"
-
-resolvers ++= Seq(
-  "Sonatype OSS Releases"  at "http://oss.sonatype.org/content/repositories/releases/",
-  "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
-  "spray repo" at "http://repo.spray.io"
-)
+scalaVersion := "2.11.1"
 
 libraryDependencies ++= Seq(
     "org.scalaz" %% "scalaz-core" % "7.0.6",
     "commons-io" % "commons-io" % "2.4",
-    "io.argonaut" %% "argonaut" % "6.0.3",
-    "io.spray" % "spray-client" % "1.3.1",
-    "com.typesafe.akka" %% "akka-actor" % "2.3.2"// % "provided"
+    "io.argonaut" %% "argonaut" % "6.0.4",
+    "net.databinder.dispatch" %% "dispatch-core" % "0.11.1"
 )
+
+initialCommands in console :=
+  """
+    |import scalaz._
+    |import Scalaz._
+    |
+    |import scala.concurrent.Future
+    |import scala.concurrent.Await
+    |import scala.concurrent.duration._
+  """.stripMargin

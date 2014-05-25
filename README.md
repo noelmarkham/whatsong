@@ -14,3 +14,4 @@ Plenty to do:
   * This application feels like it could work well with Scalaz-stream
   * Rewrite it in Haskell :)
   * Logging
+  * Rewrite the continually method
