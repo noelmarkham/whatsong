@@ -68,8 +68,7 @@ object Feeds {
   }
 
   def getFingerprint(json: Json): String \/ String = {
-    val codeLens = jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("code") >=> jStringPL
-    codeLens
+    Lenses.codeLens
       .get(json)
       .toRightDisjunction(s"Cannot extract code from fingerprint application output: $json")
   }
@@ -97,7 +96,11 @@ object Feeds {
 }
 
 object Lenses {
-  val idLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("id") >=> jStringPL
-  val artistLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("artist_name") >=> jStringPL
-  val titleLens = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("title") >=> jStringPL
+  val codeLens = jArrayPL >=> jsonArrayPL(0) >=> jObjectPL >=> jsonObjectPL("code") >=> jStringPL
+
+  private val songResponsePL = jObjectPL >=> jsonObjectPL("response") >=> jObjectPL >=> jsonObjectPL("songs") >=> jArrayPL >=> jsonArrayPL(0) >=> jObjectPL
+
+  val idLens = songResponsePL >=> jsonObjectPL("id") >=> jStringPL
+  val artistLens = songResponsePL >=> jsonObjectPL("artist_name") >=> jStringPL
+  val titleLens = songResponsePL >=> jsonObjectPL("title") >=> jStringPL
 }

@@ -11,7 +11,7 @@ import scala.annotation.tailrec
 import java.util.Date
 import java.io.File
 import scala.concurrent.{Await, Future}
-import concurrent.duration.Duration
+import scala.concurrent.duration._
 import java.util.concurrent.TimeUnit
 
 trait AudioStreamerConfig {
