@@ -1,5 +1,11 @@
 package com.noelmarkham.whatsong
 
+import java.util.concurrent.atomic.{AtomicReference, AtomicInteger}
+import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
+
+import org.eclipse.jetty.server.{Request, Server}
+import org.eclipse.jetty.server.handler.AbstractHandler
+
 import scalaz._
 import Scalaz._
 import argonaut._
@@ -53,17 +59,23 @@ object AudioStreamer {
     } yield song
   }
 
-  def runContinually(config: AudioStreamerConfig): Unit = {
+  def runContinually(config: AudioStreamerConfig, output: String => Unit): Unit = {
 
     @tailrec
     def matches(prevSong: Option[Song], prevMatches: (Option[Song], Option[Song]), errorCount: Int = 10): Unit = {
 
       val possibleSongs = try {
+        println(s"${new Date()}: Polling")
         Await.result(getSong(config), Duration(10, TimeUnit.MINUTES))
       }
       catch {
-        case _: Exception => (None, None).right
+        case e: Exception => {
+          println(s"${new Date()}: Received exception: $e")
+          (None, None).right
+        }
       }
+
+      println(s"${new Date()}: Got $possibleSongs")
 
       possibleSongs match {
         case -\/(errorString) => {
@@ -84,10 +96,10 @@ object AudioStreamer {
           }.filter{case (_, v) => v > 1}.map{case (k, _) => k}.toList
 
           (goodMatches.length, goodMatches.headOption) match {
-            case (1, o @ Some(s)) if prevSong =/= o => {
-              println(s"${new Date()}: ${s.describe}")
+            case (1, o @ Some(s)) if prevSong =/= o =>
+              println(s"${new Date()}: Found match: $s")
+              output(s"${new Date()}: ${s.describe}")
               matches(o, (s1, s2))
-            }
             case _ => matches(prevSong, (s1, s2))
           }
         }
@@ -95,6 +107,36 @@ object AudioStreamer {
     }
 
     matches(None, (None, None))
+  }
+
+  def runConsole(config: AudioStreamerConfig): Unit = {
+    runContinually(config, println)
+  }
+
+  def runServer(config: AudioStreamerConfig): Unit = {
+    val server = new Server(8080)
+
+    val currentSong = new AtomicReference[Option[String]](None)
+
+    def updateCurrentSong(songDescription: String) = {
+      currentSong.set(songDescription.some)
+    }
+
+    server.setHandler(new AbstractHandler {
+      override def handle(target: String, baseRequest: Request, request: HttpServletRequest, response: HttpServletResponse): Unit = {
+        response.setStatus(200)
+        val output = currentSong.get().getOrElse("No matches")
+
+        baseRequest.setHandled(true)
+        response.getWriter.println(output)
+      }
+    })
+
+    server.start()
+
+    import scala.concurrent.ExecutionContext.Implicits.global
+    Future(runContinually(config, updateCurrentSong))
+    server.join()
   }
 }
 

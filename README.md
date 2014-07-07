@@ -11,7 +11,6 @@ Plenty to do:
   * Parse the JSON response from Echonest properly, taking multiple track responses into account
   * Connect it to Twitter
   * Big one: re-implement Echoprint rather than calling an external application
-  * This application feels like it could work well with Scalaz-stream
   * Rewrite it in Haskell :)
-  * Logging
   * Rewrite the continually method
+  * Serve different response types
