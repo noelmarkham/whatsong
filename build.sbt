@@ -1,3 +1,5 @@
+import sbtassembly.Plugin._
+
 scalaVersion := "2.11.1"
 
 libraryDependencies ++= Seq(
@@ -17,3 +19,5 @@ initialCommands in console :=
     |import scala.concurrent.Await
     |import scala.concurrent.duration._
   """.stripMargin
+
+assemblySettings

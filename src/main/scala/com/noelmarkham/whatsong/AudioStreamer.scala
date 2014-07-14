@@ -14,8 +14,8 @@ import EitherT._
 import Feeds._
 import Implicits._
 import scala.annotation.tailrec
-import java.util.Date
-import java.io.File
+import java.util.{Properties, Date}
+import java.io.{FileInputStream, File}
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import java.util.concurrent.TimeUnit
@@ -140,3 +140,29 @@ object AudioStreamer {
   }
 }
 
+object Main extends App {
+
+  val properties = new Properties()
+  properties.load(new FileInputStream("config.properties"))
+
+  val configOption =
+   (Option(properties.getProperty("whatsong.url")) |@|
+    Option(properties.getProperty("whatsong.apiKey")) |@|
+    Option(properties.getProperty("whatsong.echoprintExecutable")) |@|
+    Option(properties.getProperty("whatsong.enmfpExecutable"))) { (curl, capiKey, cechoprintExecutable, cenmfpExecutable) =>
+
+    new AudioStreamerConfig {
+      val url: String = curl
+      val apiKey: String = capiKey
+      val echoprintExecutable: String = cechoprintExecutable
+      val enmfpExecutable: String = cenmfpExecutable
+    }
+  }
+
+  configOption.cata({ (config: AudioStreamerConfig) =>
+    AudioStreamer.runServer(config)
+  }, {
+    System.err.println("Provide an appropriate config.properties file")
+//    System.exit(-1)
+  })
+}
